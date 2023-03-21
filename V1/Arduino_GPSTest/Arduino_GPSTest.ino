@@ -9,7 +9,7 @@
 #define TINY_GSM_RX_BUFFER 1024  // Set RX buffer to 1Kb
 #define SerialAT Serial1
 #define DebbugFlag 0
-#define GPSdelay 500
+#define GPSdelay 1000
 
 // See all AT commands, if wanted
 // #define DUMP_AT_COMMANDS
@@ -250,8 +250,8 @@ void loop() {
   Sol_mv              = readSolar();
 
   while (Keep_sampling_flag==1) {    
-    Act_time_ms =  (esp_timer_get_time()-TimeTickerStart_us)/1000;     
-
+    
+    Act_time_ms =  (esp_timer_get_time()-TimeTickerStart_us)/1000;    
     if (Act_time_ms>NextCall_ms) {
 
       TimeTicker_us   = (esp_timer_get_time()-TimeTickerStart_us);       
@@ -290,9 +290,10 @@ void loop() {
         
         dataMessage = String(i) + "," + String(sec+min*60+hour*60*60) + "," + String(Act_time_ms)+ "," + String(NextCall_ms) + "," +  String( Runtime_ms) + "," + String(speed) + "," +  String(lat) + "," +  String(lon)  + "," +  String(Bat_mv)   + "," +  String(accuracy)  +  "\r\n";
         appendFile(SD, "/data.txt", dataMessage.c_str());
-        
+        Last_loop_Act_time_ms = Act_time_ms;
+        Act_time_ms           =  (esp_timer_get_time()-TimeTickerStart_us)/1000; 
         Runtime_ms  = Act_time_ms-Last_loop_Act_time_ms; 
-        Last_loop_Act_time_ms=Act_time_ms;
+        
         NextCall_ms     = NextCall_ms+GPSdelay;
       } else {
         SerialMon.println("Requesting current GPS/GNSS/GLONASS location " + String(i, 8));
