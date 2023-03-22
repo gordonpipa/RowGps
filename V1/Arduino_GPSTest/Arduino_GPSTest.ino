@@ -8,7 +8,7 @@
 #define TINY_GSM_MODEM_SIM7000
 #define TINY_GSM_RX_BUFFER 1024  // Set RX buffer to 1Kb
 #define SerialAT Serial1
-#define DebbugFlag 0
+#define DebbugFlag 1
 #define GPSdelay 1000
 
 // See all AT commands, if wanted
@@ -34,6 +34,7 @@ const char* password = "14951495";
 long timezone = 1;
 byte daysavetime = 1;
 String dataMessage;
+String filename;
 
 #ifdef DUMP_AT_COMMANDS
 #include <StreamDebugger.h>
@@ -87,18 +88,20 @@ float readSolar() {
   return battery_voltage;
 }
 
-void appendFile(fs::FS &fs, const char * path, const char * message) {
-  Serial.printf("Appending to file: %s\n", path);
+void appendFile(fs::FS& fs, const char* path, const char* message) {
+  if (DebbugFlag == 1) { Serial.printf("Appending to file: %s\n", path); }
 
   File file = fs.open(path, FILE_APPEND);
-  if(!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-  if(file.print(message)) {
-    Serial.println("Message appended");
-  } else {
-    Serial.println("Append failed");
+  if (DebbugFlag == 1) {
+    if (!file) {
+      Serial.println("Failed to open file for appending");
+      return;
+    }
+    if (file.print(message)) {
+      Serial.println("Message appended");
+    } else {
+      Serial.println("Append failed");
+    }
   }
   file.close();
 }
@@ -164,11 +167,11 @@ void setup() {
     Serial.println(str);
   }
 
-  File file = SD.open("/data.txt");
+  File file = SD.open("/logfile.txt");
   if (!file) {
     Serial.println("File doens't exist");
     Serial.println("Creating file...");
-    writeFile(SD, "/data.txt", "Reading ID, Date, Hour, Temperature \r\n");
+    writeFile(SD, "/logfile.txt", "--- NEW session ----\r\n");
   } else {
     Serial.println("File already exists");
   }
@@ -236,72 +239,99 @@ void loop() {
   float Bat_mv = 0;
   float Sol_mv = 0;
 
-  uint64_t TimeTicker_us  =0;
-  uint64_t TimeTickerStart_us=0;
-  uint64_t Act_time_ms    =0;
-  uint64_t Last_loop_Act_time_ms    =0;
-  uint64_t NextCall_ms    =0;
-  int      Runtime_ms     =0;
+  uint64_t TimeTicker_us = 0;
+  uint64_t TimeTickerStart_us = 0;
+  uint64_t Act_time_ms = 0;
+  uint64_t Last_loop_Act_time_ms = 0;
+  uint64_t NextCall_ms = 0;
+  int Runtime_ms = 0;
   int Keep_sampling_flag = 1;
 
-  TimeTickerStart_us  = esp_timer_get_time(); 
-  NextCall_ms         = GPSdelay;
-  Bat_mv              = readBattery();
-  Sol_mv              = readSolar();
+  TimeTickerStart_us = esp_timer_get_time();
+  NextCall_ms = GPSdelay;
+  Bat_mv = readBattery();
+  Sol_mv = readSolar();
 
-  while (Keep_sampling_flag==1) {    
-    
-    Act_time_ms =  (esp_timer_get_time()-TimeTickerStart_us)/1000;    
-    if (Act_time_ms>NextCall_ms) {
+  while (Keep_sampling_flag == 1) {
+    if (modem.getGPS(&lat, &lon, &speed, &alt, &vsat, &usat, &accuracy, &year, &month, &day, &hour, &min, &sec)) {
+      Keep_sampling_flag = 0;
+    } else {
+      SerialMon.println("Requesting current GPS/GNSS/GLONASS location " + String(i, 8));
+      digitalWrite(LED_PIN, HIGH);
+      delay(3000);
+      digitalWrite(LED_PIN, LOW);
+      delay(3000);
+    }
+  }
 
-      TimeTicker_us   = (esp_timer_get_time()-TimeTickerStart_us);       
-      SerialMon.println("Next: " + String(NextCall_ms, 16) + "\tnow: " + String(Act_time_ms, 16) + "\tdt: " + String(Runtime_ms, 8));
+  delay(3000);
+
+  if (DebbugFlag == 1) {
+    Serial.println("The location has been locked, the latitude and longitude are:");
+    SerialMon.println("Latitude: " + String(lat, 8) + "\tLongitude: " + String(lon, 8));
+    SerialMon.println("Speed: " + String(speed) + "\tAltitude: " + String(alt));
+    SerialMon.println("Visible Satellites: " + String(vsat) + "\tUsed Satellites: " + String(usat));
+    SerialMon.println("Accuracy: " + String(accuracy));
+    SerialMon.println("Year: " + String(year) + "\tMonth: " + String(month) + "\tDay: " + String(day));
+    SerialMon.println("Hour: " + String(hour) + "\tMinute: " + String(min) + "\tSecond: " + String(sec));
+  }
+
+  dataMessage = "Starting Recording \r\n";
+  appendFile(SD, "/logfile.txt", dataMessage.c_str());
+  dataMessage = String(day) + "/" + String(month) + "/" + String(year) + "-" + String(hour) + ":" + String(min) + ":" + String(sec) + "\r\n";
+  appendFile(SD, "/logfile.txt", dataMessage.c_str());
+  filename = "/Data_" + String(day) + "_" + String(month) + "_" + String(year) + "_" + String(hour) + "_" + String(min) + "_" + String(sec) + ".txt";
+  dataMessage = "Filename: " + filename;
+  appendFile(SD, "/logfile.txt", dataMessage.c_str());
+
+  File file = SD.open(filename.c_str());
+  if (!file) {
+    if (DebbugFlag == 1) {
+      Serial.println("File doens't exist");
+      Serial.println("Creating file...");
+    }
+    writeFile(SD, filename.c_str(), "--- NEW session ----\r\n");
+  } else {
+    if (DebbugFlag == 1) { Serial.println("File already exists"); }
+  }
+  file.close();
+
+  dataMessage = String(day) + "/" + String(month) + "/" + String(year) + "-" + String(hour) + ":" + String(min) + ":" + String(sec) + "\r\n";
+  appendFile(SD, filename.c_str(), dataMessage.c_str());
+
+  Keep_sampling_flag = 1;
+  Act_time_ms = (esp_timer_get_time() - TimeTickerStart_us) / 1000;
+  NextCall_ms = Act_time_ms + GPSdelay;
+
+  while (Keep_sampling_flag == 1) {
+    Act_time_ms = (esp_timer_get_time() - TimeTickerStart_us) / 1000;
+    if (Act_time_ms > NextCall_ms) {
+      digitalWrite(LED_PIN, LOW);
+      TimeTicker_us = (esp_timer_get_time() - TimeTickerStart_us);
+      if (DebbugFlag == 1) { SerialMon.println("Next: " + String(NextCall_ms, 16) + "\tnow: " + String(Act_time_ms, 16) + "\tdt: " + String(Runtime_ms, 8)); }
       //delay(1000);
       //if ((NextCall-Act_time)> 250) {NextCall=Act_time;};
       //if ((NextCall-Act_time)<-250) {NextCall=Act_time;};
-     
+
       //Serial.println("batter : %f\n", mv);
 
-      if (DebbugFlag==1) {SerialMon.println("Battery: " + String(Bat_mv, 8) + "\tV:" + "\tSolar: " + String(Sol_mv, 8) + "\tV:");}
+      if (DebbugFlag == 1) { SerialMon.println("Battery: " + String(Bat_mv, 8) + "\tV:" + "\tSolar: " + String(Sol_mv, 8) + "\tV:"); }
       if (modem.getGPS(&lat, &lon, &speed, &alt, &vsat, &usat, &accuracy,
-                      &year, &month, &day, &hour, &min, &sec)) {           
+                       &year, &month, &day, &hour, &min, &sec)) {
         i = i + 1;
-        if (i < 2) {
-          NextCall_ms     = Act_time_ms+GPSdelay;
-          if (DebbugFlag==1) {
-            Serial.println("The location has been locked, the latitude and longitude are:");
-            SerialMon.println("Latitude: " + String(lat, 8) + "\tLongitude: " + String(lon, 8));
-            SerialMon.println("Speed: " + String(speed) + "\tAltitude: " + String(alt));
-            SerialMon.println("Visible Satellites: " + String(vsat) + "\tUsed Satellites: " + String(usat));
-            SerialMon.println("Accuracy: " + String(accuracy));
-            SerialMon.println("Year: " + String(year) + "\tMonth: " + String(month) + "\tDay: " + String(day));
-            SerialMon.println("Hour: " + String(hour) + "\tMinute: " + String(min) + "\tSecond: " + String(sec));
-          }
-          digitalWrite(LED_PIN, !digitalRead(LED_PIN));  
-          dataMessage = "################################################\r\n";
-          appendFile(SD, "/data.txt", dataMessage.c_str());
-          dataMessage = String(day) + "/" + String(month) + "/" + String(year) + "-" + String(hour) + ":" +  String(min) + ":" +  String(sec)   + "\r\n";
-          appendFile(SD, "/data.txt", dataMessage.c_str());
 
-        } else {
-          if (DebbugFlag==1) {SerialMon.println(String(i, 8) + "\tSp: " + String(speed) + "\tAlt: " + String(alt) + "\tLat: " + String(lat, 8) + "\tLon: " + String(lon, 8)  ); } 
-          digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-        }
-        
-        dataMessage = String(i) + "," + String(sec+min*60+hour*60*60) + "," + String(Act_time_ms)+ "," + String(NextCall_ms) + "," +  String( Runtime_ms) + "," + String(speed) + "," +  String(lat) + "," +  String(lon)  + "," +  String(Bat_mv)   + "," +  String(accuracy)  +  "\r\n";
-        appendFile(SD, "/data.txt", dataMessage.c_str());
+        if (DebbugFlag == 1) { SerialMon.println(String(i, 8) + "\tSp: " + String(speed) + "\tAlt: " + String(alt) + "\tLat: " + String(lat, 8) + "\tLon: " + String(lon, 8)); }
+        Bat_mv = readBattery();
+        Sol_mv = readSolar();
+
+        dataMessage = String(i) + "," + String(sec + min * 60 + hour * 60 * 60) + "," + String(Act_time_ms) + "," + String(NextCall_ms) + "," + String(Runtime_ms) + "," + String(speed, 4) + "," + String(lat, 8) + "," + String(lon, 8) + "," + String(Bat_mv) + "," + String(accuracy) + "\r\n";
+        appendFile(SD, filename.c_str(), dataMessage.c_str());
         Last_loop_Act_time_ms = Act_time_ms;
-        Act_time_ms           =  (esp_timer_get_time()-TimeTickerStart_us)/1000; 
-        Runtime_ms  = Act_time_ms-Last_loop_Act_time_ms; 
-        
-        NextCall_ms     = NextCall_ms+GPSdelay;
-      } else {
-        SerialMon.println("Requesting current GPS/GNSS/GLONASS location " + String(i, 8));
-        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-        delay(1000);
-        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-        delay(1000);
+        Act_time_ms = (esp_timer_get_time() - TimeTickerStart_us) / 1000;
+        Runtime_ms = Act_time_ms - Last_loop_Act_time_ms;
+        digitalWrite(LED_PIN, HIGH);
       }
+      NextCall_ms = NextCall_ms + GPSdelay;
     }
 
     delay(1);
