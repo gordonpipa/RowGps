@@ -260,7 +260,15 @@ void loop() {
       digitalWrite(LED_PIN, HIGH);
       delay(3000);
       digitalWrite(LED_PIN, LOW);
-      delay(3000);
+      delay(300);
+      digitalWrite(LED_PIN, HIGH);
+      delay(300);
+      digitalWrite(LED_PIN, LOW);
+      delay(300);
+      digitalWrite(LED_PIN, HIGH);
+      delay(300);
+      digitalWrite(LED_PIN, LOW);
+      delay(300);
     }
   }
 
@@ -324,7 +332,7 @@ void loop() {
         Bat_mv = readBattery();
         Sol_mv = readSolar();
 
-        dataMessage = String(i) + "," + String(sec + min * 60 + hour * 60 * 60) + "," + String(Act_time_ms) + "," + String(NextCall_ms) + "," + String(Runtime_ms) + "," + String(speed, 4) + "," + String(lat, 8) + "," + String(lon, 8) + "," + String(Bat_mv) + "," + String(accuracy) + "\r\n";
+        dataMessage = String(i) + "," + String(Bat_mv) + ","  + String(sec + min * 60 + hour * 60 * 60) + "," + String(Act_time_ms) + "," + String(Runtime_ms) + "," + String(speed, 4) + "," + String(lat, 8) + "," + String(lon, 8) + ","  + String(accuracy) + "\r\n";
         appendFile(SD, filename.c_str(), dataMessage.c_str());
         Last_loop_Act_time_ms = Act_time_ms;
         Act_time_ms = (esp_timer_get_time() - TimeTickerStart_us) / 1000;
